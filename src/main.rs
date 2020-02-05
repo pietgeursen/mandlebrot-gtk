@@ -58,11 +58,17 @@ fn mandlebrot_image_to_pixbuf(mb_image: MandlebrotImage) -> Pixbuf {
     )
 }
 
-fn new_image(num_points_y: usize, start_x: f64, start_y: f64, width_ratio: f64, scale: f64 )-> MandlebrotImage{
+const STARTING_SIZE: f64 = 3f64;
+
+fn new_image(num_points_y: usize, center_x: f64, center_y: f64, width_ratio: f64, scale: f64 )-> MandlebrotImage{
 
     let num_points_x = (num_points_y as f64 * width_ratio) as usize;
-    let end_x = start_x + 3f64 * scale * width_ratio;  
-    let end_y = start_y + 3f64 * scale;  
+
+    let start_x = center_x - (STARTING_SIZE / 2f64) * scale * width_ratio; 
+    let end_x = center_x + (STARTING_SIZE / 2f64) * scale * width_ratio; 
+
+    let start_y = center_y - (STARTING_SIZE / 2f64) * scale; 
+    let end_y = center_y + (STARTING_SIZE / 2f64) * scale; 
 
     let linsp = Array::linspace(start_y, end_y, num_points_y);
 
@@ -93,18 +99,11 @@ fn new_image(num_points_y: usize, start_x: f64, start_y: f64, width_ratio: f64, 
         num_points_x,
         num_points_y
     }
-//    let bytes = Bytes::from_owned(buff);
-//    let pixbuf = Pixbuf::new_from_bytes(
-//        &bytes,
-//        Colorspace::Rgb,
-//        true,
-//        8,
-//        num_points_x as i32,
-//        num_points_y as i32,
-//        num_points_x as i32 * 4,
-//    );
-//
-//    pixbuf
+}
+
+struct Center{
+    x: f64,
+    y: f64
 }
 
 fn main() {
@@ -121,13 +120,10 @@ fn main() {
         let height_mutex = Arc::new(Mutex::new(0));
         let width_mutex = Arc::new(Mutex::new(0));
         let scale_mutex = Arc::new(Mutex::new(1f64));
+        let center_mutex = Arc::new(Mutex::new(Center{x: 0.0, y: 0.0}));
 
         ApplicationWindow::new(app);
 
-        let button = Button::new_with_label("Click me!");
-        button.connect_clicked(|_| {
-            println!("Clicked!");
-        });
 //        let pixbuf2 = pixbuf
 //            .scale_simple(
 //                num_points_in_window as i32 / 3,
@@ -139,23 +135,35 @@ fn main() {
         let cloned_height = height_mutex.clone();
         let cloned_width = width_mutex.clone();
         let cloned_scale = scale_mutex.clone();
+        let cloned_center = center_mutex.clone();
+
         image_event_box.connect_button_press_event(move |a, e| {
 
             let height = cloned_height.lock().unwrap();
             let width = cloned_width.lock().unwrap();
             let mut scale = cloned_scale.lock().unwrap();
+            let mut center = cloned_center.lock().unwrap();
+            
+            let (click_x, click_y) = e.get_position();
+            center.x += *scale * (click_x as f64 - (*width as f64 / 2f64)) / *width as f64;
+            center.y += *scale * (click_y as f64 - (*height as f64 / 2f64)) / *height as f64;
 
-            *scale *= 0.8;
+            if e.get_button() == 1{
+                *scale *= 0.8;
+            }else{
+                *scale *= 1.2;
+            }
 
-            do_the_thing(cloned_image.clone(), *height, *width, *scale);
 
-            println!("position!, {:?}", e.get_position());
-            println!("coords!, {:?}", e.get_coords());
-            println!("root!, {:?}", e.get_root());
+            do_the_thing(cloned_image.clone(), *height, *width, *scale, center.x, center.y);
 
-            let alloc = a.get_allocation();
-            println!("alloc!, {:?}", alloc);
-            println!("a!, {:?}", a);
+            //println!("position!, {:?}", e.get_position());
+            //println!("coords!, {:?}", e.get_coords());
+            //println!("root!, {:?}", e.get_root());
+
+            //let alloc = a.get_allocation();
+            //println!("alloc!, {:?}", alloc);
+            //println!("a!, {:?}", a);
             Inhibit(false)
         });
 
@@ -163,6 +171,7 @@ fn main() {
         image_event_box.connect_size_allocate(move |_, allocation| {
 
             let scale = scale_mutex.lock().unwrap();
+            let center = center_mutex.lock().unwrap();
 
             let mut height = height_mutex.lock().unwrap();
             let mut width = width_mutex.lock().unwrap();
@@ -174,7 +183,7 @@ fn main() {
             *width = allocation.width;
             *height = allocation.height;
 
-            do_the_thing(cloned_image.clone(), *height, *width, *scale);
+            do_the_thing(cloned_image.clone(), *height, *width, *scale, center.x, center.y);
         });
 
         win.show_all();
@@ -183,11 +192,11 @@ fn main() {
     application.run(&[]);
 }
 
-fn do_the_thing(image: Image, height: i32, width: i32, scale: f64){
+fn do_the_thing(image: Image, height: i32, width: i32, scale: f64, center_x: f64, center_y: f64){
     let (tx, rx) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
 
     thread::spawn(move ||{
-        let pbuff = new_image(height as usize, -3.5, -1.5, width as f64 / height as f64, scale);
+        let pbuff = new_image(height as usize, center_x, center_y, width as f64 / height as f64, scale);
         tx.send(pbuff).unwrap();
     });
 
@@ -197,5 +206,4 @@ fn do_the_thing(image: Image, height: i32, width: i32, scale: f64){
         cloned_image.set_from_pixbuf(Some(&pixbuf));
         glib::Continue(false)
     });
-
 }
