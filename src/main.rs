@@ -12,7 +12,7 @@ use gtk::{Application, ApplicationWindow, Builder, EventBox, Image, Inhibit, Win
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-const NUM_ITERATIONS: i32 = 200;
+const NUM_ITERATIONS: i32 = 100;
 const LIMIT: f64 = 10.0E6;
 
 fn next_mandle_num(previous: &Complex<f64>, c: &Complex<f64>) -> Complex<f64> {
@@ -29,6 +29,7 @@ fn next_derivative(
 fn is_in_set(
     previous: &Complex<f64>,
     previous_previous: &Complex<f64>,
+    previous_previous_previous: &Complex<f64>,
     previous_derivative: &Complex<f64>,
     c: &Complex<f64>,
     iter_num: i32,
@@ -39,13 +40,13 @@ fn is_in_set(
     if previous.norm() > LIMIT {
         let dist = 2.0 * ((previous.norm() * f64::ln(previous.norm())) / previous_derivative.norm());
         if dist < 0.25 { 100.0 } else { 0.0 }
-    } else if next == *previous_previous {
+    } else if next == *previous_previous || next == *previous_previous_previous {
         255.0 
     } else if iter_num == 0 {
         255.0 
     } else {
         let next_deriv = next_derivative(previous, previous_derivative);
-        is_in_set(&next_mandle_num(&next, c), previous, &next_deriv, c, iter_num - 1)
+        is_in_set(&next_mandle_num(&next, c), previous, previous_previous, &next_deriv, c, iter_num - 1)
     }
 }
 struct MandlebrotImage {
@@ -91,7 +92,7 @@ fn new_image(
         linsp2.par_map_inplace(|real| {
             let c = Complex::<f64>::new(*real, *im);
             let initial_deriv = Complex::<f64>::new(1.0, 0.0);
-            *real = is_in_set(&c, &c, &initial_deriv, &c, NUM_ITERATIONS)
+            *real = is_in_set(&c, &c, &c, &initial_deriv, &c, NUM_ITERATIONS)
         });
         linsp2
     });
